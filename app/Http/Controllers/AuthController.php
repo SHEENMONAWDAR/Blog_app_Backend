@@ -11,26 +11,46 @@ class AuthController extends Controller
     //Register user
     public function register(Request $request)
     {
-        //validate fields
+        // ✅ Validate input including optional image
         $attrs = $request->validate([
             'name' => 'required|string',
             'email' => 'required|email|unique:users,email',
-            'password' => 'required|min:6|confirmed'
+            'password' => 'required|min:6|confirmed',
+            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
-        //create user
+        $imagePath = null;
+
+        // ✅ Handle image upload (same logic as PostController@store)
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            $extension = $file->getClientOriginalExtension();
+            $filename = uniqid() . '.' . $extension;
+
+            // Store file inside storage/app/public/profiles
+            $path = $file->storeAs('profiles', $filename, 'public');
+
+            // ✅ Save only relative path (like storage/profiles/abc123.jpg)
+            $imagePath = 'storage/' . $path;
+        }
+
+        // ✅ Create user with optional image
         $user = User::create([
             'name' => $attrs['name'],
             'email' => $attrs['email'],
-            'password' => bcrypt($attrs['password'])
+            'password' => bcrypt($attrs['password']),
+            'image' => $imagePath,
         ]);
 
-        //return user & token in response
+        // ✅ Return user and token
         return response([
             'user' => $user,
-            'token' => $user->createToken('secret')->plainTextToken
+            'token' => $user->createToken('secret')->plainTextToken,
         ], 200);
     }
+
+
+
 
     // login user
     public function login(Request $request)
@@ -42,8 +62,7 @@ class AuthController extends Controller
         ]);
 
         // attempt login
-        if(!Auth::attempt($attrs))
-        {
+        if (!Auth::attempt($attrs)) {
             return response([
                 'message' => 'Invalid credentials.'
             ], 403);
@@ -92,5 +111,4 @@ class AuthController extends Controller
             'user' => auth()->user()
         ], 200);
     }
-
 }

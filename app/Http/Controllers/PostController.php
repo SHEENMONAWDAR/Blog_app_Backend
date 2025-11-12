@@ -3,117 +3,137 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\User;
 use App\Models\Post;
 
 class PostController extends Controller
 {
-    // get all posts
-    public function index()
-    {
-        return response([
-            'posts' => Post::orderBy('created_at', 'desc')->with('user:id,name,image')->withCount('comments', 'likes')
-            ->with('likes', function($like){
-                return $like->where('user_id', auth()->user()->id)
-                    ->select('id', 'user_id', 'post_id')->get();
-            })
-            ->get()
-        ], 200);
-    }
+    // 🔹 Get all posts
+public function index()
+{
+    $userId = auth()->id();
 
-    // get single post
+    $posts = Post::with(['user:id,name,image'])
+        ->withCount(['comments', 'likes'])
+        ->orderBy('created_at', 'desc')
+        ->get()
+        ->map(function ($post) use ($userId) {
+            // ✅ Add 'is_liked' property for current user
+            $post->is_liked = $post->likes()->where('user_id', $userId)->exists();
+            return $post;
+        });
+
+    return response([
+        'posts' => $posts
+    ], 200);
+}
+
+
+    // 🔹 Get single post
     public function show($id)
     {
         return response([
-            'post' => Post::where('id', $id)->withCount('comments', 'likes')->get()
+            'post' => Post::where('id', $id)
+                ->withCount('comments', 'likes')
+                ->get()
         ], 200);
     }
 
-    // create a post
+    // 🔹 Create a post (form-data only)
     public function store(Request $request)
     {
-        //validate fields
-        $attrs = $request->validate([
-            'body' => 'required|string'
+        $request->validate([
+            'body' => 'required|string',
+            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
-        $image = $this->saveImage($request->image, 'posts');
+        $imagePath = null;
+
+        // ✅ Handle image upload
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            $extension = $file->getClientOriginalExtension();
+            $filename = uniqid() . '.' . $extension;
+
+            // Store file inside storage/app/public/posts
+            $path = $file->storeAs('posts', $filename, 'public');
+
+            // ✅ Save only relative path
+            $imagePath = 'storage/' . $path; // e.g. storage/posts/filename.jpg
+        }
 
         $post = Post::create([
-            'body' => $attrs['body'],
-            'user_id' => auth()->user()->id,
-            'image' => $image
+            'body' => $request->body,
+            'user_id' => auth()->id(),
+            'image' => $imagePath,
         ]);
 
-        // for now skip for post image
-
-        return response([
-            'message' => 'Post created.',
-            'post' => $post,
-        ], 200);
-    }
-
-    // update a post
-    public function update(Request $request, $id)
-    {
-        $post = Post::find($id);
-
-        if(!$post)
-        {
-            return response([
-                'message' => 'Post not found.'
-            ], 403);
-        }
-
-        if($post->user_id != auth()->user()->id)
-        {
-            return response([
-                'message' => 'Permission denied.'
-            ], 403);
-        }
-
-        //validate fields
-        $attrs = $request->validate([
-            'body' => 'required|string'
-        ]);
-
-        $post->update([
-            'body' =>  $attrs['body']
-        ]);
-
-        // for now skip for post image
-
-        return response([
-            'message' => 'Post updated.',
+        return response()->json([
+            'message' => 'Post created successfully.',
             'post' => $post
         ], 200);
     }
 
-    //delete post
+    // 🔹 Update a post
+    public function update(Request $request, $id)
+    {
+        $post = Post::find($id);
+
+        if (!$post) {
+            return response(['message' => 'Post not found.'], 404);
+        }
+
+        if ($post->user_id != auth()->id()) {
+            return response(['message' => 'Permission denied.'], 403);
+        }
+
+        $request->validate([
+            'body' => 'required|string',
+            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+        ]);
+
+        $imagePath = $post->image; // keep old image if not replaced
+
+        // ✅ Handle new image upload
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            $extension = $file->getClientOriginalExtension();
+            $filename = uniqid() . '.' . $extension;
+
+            $path = $file->storeAs('posts', $filename, 'public');
+            $imagePath = 'storage/' . $path;
+        }
+
+        $post->update([
+            'body' => $request->body,
+            'image' => $imagePath,
+        ]);
+
+        return response()->json([
+            'message' => 'Post updated successfully.',
+            'post' => $post
+        ], 200);
+    }
+
+    // 🔹 Delete a post
     public function destroy($id)
     {
         $post = Post::find($id);
 
-        if(!$post)
-        {
-            return response([
-                'message' => 'Post not found.'
-            ], 403);
+        if (!$post) {
+            return response(['message' => 'Post not found.'], 404);
         }
 
-        if($post->user_id != auth()->user()->id)
-        {
-            return response([
-                'message' => 'Permission denied.'
-            ], 403);
+        if ($post->user_id != auth()->id()) {
+            return response(['message' => 'Permission denied.'], 403);
         }
 
+        // delete comments & likes first
         $post->comments()->delete();
         $post->likes()->delete();
+
+        // delete post itself
         $post->delete();
 
-        return response([
-            'message' => 'Post deleted.'
-        ], 200);
+        return response(['message' => 'Post deleted.'], 200);
     }
 }

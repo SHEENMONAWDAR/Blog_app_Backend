@@ -12,19 +12,21 @@ class Controller extends BaseController
 {
     use AuthorizesRequests, DispatchesJobs, ValidatesRequests;
 
-    public function saveImage($image, $path = 'public')
-    {
-        if(!$image)
-        {
-            return null;
-        }
-
-        $filename = time().'.png';
-        // save image
-        \Storage::disk($path)->put($filename, base64_decode($image));
-
-        //return the path
-        // Url is the base url exp: localhost:8000
-        return URL::to('/').'/storage/'.$path.'/'.$filename;
+public function saveImage($image, $path = 'posts')
+{
+    if (!$image) {
+        return null;
     }
+
+    // If image is a file object, store it in public/posts
+    $storedPath = $image->store($path, 'public');
+
+    // Return the public URL
+    return url('storage/' . $storedPath);
+}
+
+
+
+
+
 }

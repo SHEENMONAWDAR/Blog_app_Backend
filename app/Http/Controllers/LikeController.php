@@ -13,32 +13,36 @@ class LikeController extends Controller
     {
         $post = Post::find($id);
 
-        if(!$post)
-        {
+        if (!$post) {
             return response([
                 'message' => 'Post not found.'
-            ], 403);
+            ], 404);
         }
 
-        $like = $post->likes()->where('user_id', auth()->user()->id)->first();
+        $userId = auth()->user()->id;
+        $like = $post->likes()->where('user_id', $userId)->first();
 
-        // if not liked then like
-        if(!$like)
-        {
+        if (!$like) {
+            // ✅ Like the post
             Like::create([
                 'post_id' => $id,
-                'user_id' => auth()->user()->id
+                'user_id' => $userId
             ]);
 
-            return response([
-                'message' => 'Liked'
-            ], 200);
+            $status = 'liked';
+        } else {
+            // ✅ Unlike the post
+            $like->delete();
+            $status = 'unliked';
         }
-        // else dislike it
-        $like->delete();
+
+        // ✅ Recalculate total likes
+        $likeCount = $post->likes()->count();
 
         return response([
-            'message' => 'Disliked'
+            'message' => ucfirst($status),
+            'is_liked' => $status === 'liked',
+            'likes_count' => $likeCount,
         ], 200);
     }
 }
