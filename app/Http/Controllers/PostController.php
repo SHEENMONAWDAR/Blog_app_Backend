@@ -7,25 +7,48 @@ use App\Models\Post;
 
 class PostController extends Controller
 {
+    // 🔹 Get posts created by a specific user
+    public function userPosts($userId)
+    {
+        $authUser = auth()->id();
+
+        $posts = Post::where('user_id', $userId)
+            ->with(['user:id,name,image'])
+            ->withCount(['comments', 'likes'])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($post) use ($authUser) {
+                // Add is_liked information
+                $post->is_liked = $post->likes()->where('user_id', $authUser)->exists();
+                return $post;
+            });
+
+        return response()->json([
+            'posts' => $posts
+        ], 200);
+    }
+
+
+
     // 🔹 Get all posts
-public function index()
-{
-    $userId = auth()->id();
+    public function index()
+    {
+        $userId = auth()->id();
 
-    $posts = Post::with(['user:id,name,image'])
-        ->withCount(['comments', 'likes'])
-        ->orderBy('created_at', 'desc')
-        ->get()
-        ->map(function ($post) use ($userId) {
-            // ✅ Add 'is_liked' property for current user
-            $post->is_liked = $post->likes()->where('user_id', $userId)->exists();
-            return $post;
-        });
+        $posts = Post::with(['user:id,name,image'])
+            ->withCount(['comments', 'likes'])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($post) use ($userId) {
+                // ✅ Add 'is_liked' property for current user
+                $post->is_liked = $post->likes()->where('user_id', $userId)->exists();
+                return $post;
+            });
 
-    return response([
-        'posts' => $posts
-    ], 200);
-}
+        return response([
+            'posts' => $posts
+        ], 200);
+    }
 
 
     // 🔹 Get single post
