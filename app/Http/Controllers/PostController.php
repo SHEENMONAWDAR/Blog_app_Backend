@@ -18,17 +18,12 @@ class PostController extends Controller
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($post) use ($authUser) {
-                // Add is_liked information
                 $post->is_liked = $post->likes()->where('user_id', $authUser)->exists();
                 return $post;
             });
 
-        return response()->json([
-            'posts' => $posts
-        ], 200);
+        return response()->json(['posts' => $posts], 200);
     }
-
-
 
     // 🔹 Get all posts
     public function index()
@@ -40,123 +35,75 @@ class PostController extends Controller
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($post) use ($userId) {
-                // ✅ Add 'is_liked' property for current user
                 $post->is_liked = $post->likes()->where('user_id', $userId)->exists();
                 return $post;
             });
 
-        return response([
-            'posts' => $posts
-        ], 200);
+        return response()->json(['posts' => $posts], 200);
     }
 
+    // 🔹 Create a post
+public function store(Request $request)
+{
+    $request->validate([
+        'body' => 'required|string',
+        'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+    ]);
 
-    // 🔹 Get single post
-    public function show($id)
-    {
-        return response([
-            'post' => Post::where('id', $id)
-                ->withCount('comments', 'likes')
-                ->get()
-        ], 200);
+    $imagePath = null;
+
+    if ($request->hasFile('image')) {
+        $imagePath = $this->saveImage($request->file('image'), 'posts');
     }
 
-    // 🔹 Create a post (form-data only)
-    public function store(Request $request)
-    {
-        $request->validate([
-            'body' => 'required|string',
-            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
-        ]);
+    $post = Post::create([
+        'body' => $request->body,
+        'user_id' => auth()->id(),
+        'image' => $imagePath,
+    ]);
 
-        $imagePath = null;
+    return response()->json(['post' => $post], 200);
+}
 
-        // ✅ Handle image upload
-        if ($request->hasFile('image')) {
-            $file = $request->file('image');
-            $extension = $file->getClientOriginalExtension();
-            $filename = uniqid() . '.' . $extension;
+public function update(Request $request, $id)
+{
+    $post = Post::find($id);
 
-            // Store file inside storage/app/public/posts
-            $path = $file->storeAs('posts', $filename, 'public');
+    if (!$post) return response(['message' => 'Post not found'], 404);
+    if ($post->user_id != auth()->id()) return response(['message' => 'Permission denied'], 403);
 
-            // ✅ Save only relative path
-            $imagePath = 'storage/' . $path; // e.g. storage/posts/filename.jpg
-        }
+    $request->validate([
+        'body' => 'required|string',
+        'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+    ]);
 
-        $post = Post::create([
-            'body' => $request->body,
-            'user_id' => auth()->id(),
-            'image' => $imagePath,
-        ]);
+    $imagePath = $post->image;
 
-        return response()->json([
-            'message' => 'Post created successfully.',
-            'post' => $post
-        ], 200);
+    if ($request->hasFile('image')) {
+        $imagePath = $this->saveImage($request->file('image'), 'posts');
     }
 
-    // 🔹 Update a post
-    public function update(Request $request, $id)
-    {
-        $post = Post::find($id);
+    $post->update([
+        'body' => $request->body,
+        'image' => $imagePath,
+    ]);
 
-        if (!$post) {
-            return response(['message' => 'Post not found.'], 404);
-        }
+    return response()->json(['post' => $post], 200);
+}
 
-        if ($post->user_id != auth()->id()) {
-            return response(['message' => 'Permission denied.'], 403);
-        }
 
-        $request->validate([
-            'body' => 'required|string',
-            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
-        ]);
-
-        $imagePath = $post->image; // keep old image if not replaced
-
-        // ✅ Handle new image upload
-        if ($request->hasFile('image')) {
-            $file = $request->file('image');
-            $extension = $file->getClientOriginalExtension();
-            $filename = uniqid() . '.' . $extension;
-
-            $path = $file->storeAs('posts', $filename, 'public');
-            $imagePath = 'storage/' . $path;
-        }
-
-        $post->update([
-            'body' => $request->body,
-            'image' => $imagePath,
-        ]);
-
-        return response()->json([
-            'message' => 'Post updated successfully.',
-            'post' => $post
-        ], 200);
-    }
-
-    // 🔹 Delete a post
+    // 🔹 Delete post
     public function destroy($id)
     {
         $post = Post::find($id);
 
-        if (!$post) {
-            return response(['message' => 'Post not found.'], 404);
-        }
+        if (!$post) return response(['message' => 'Post not found'], 404);
+        if ($post->user_id != auth()->id()) return response(['message' => 'Permission denied'], 403);
 
-        if ($post->user_id != auth()->id()) {
-            return response(['message' => 'Permission denied.'], 403);
-        }
-
-        // delete comments & likes first
         $post->comments()->delete();
         $post->likes()->delete();
-
-        // delete post itself
         $post->delete();
 
-        return response(['message' => 'Post deleted.'], 200);
+        return response(['message' => 'Post deleted'], 200);
     }
 }

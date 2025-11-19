@@ -18,12 +18,17 @@ public function saveImage($image, $path = 'posts')
         return null;
     }
 
-    // If image is a file object, store it in public/posts
-    $storedPath = $image->store($path, 'public');
+    // Create your own filename
+    $filename = uniqid() . '.' . $image->getClientOriginalExtension();
 
-    // Return the public URL
-    return url('storage/' . $storedPath);
+    // Save inside storage/app/public/posts
+    $storedPath = $image->storeAs($path, $filename, 'public');
+
+    // Return only relative path (posts/filename.jpg)
+    return $storedPath;
 }
+
+
 
 
 
